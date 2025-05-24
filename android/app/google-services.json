@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "287386172477",
+    "project_id": "artourguide-1",
+    "storage_bucket": "artourguide-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:287386172477:android:2d038062734259f279be54",
+        "android_client_info": {
+          "package_name": "com.example.artourguide_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfCcKxTGjpECIZh8S009IGoQdtxt3p0as"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
