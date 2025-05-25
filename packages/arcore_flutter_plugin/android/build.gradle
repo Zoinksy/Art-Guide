@@ -1,0 +1,90 @@
+group 'com.difrancescogianmarco.arcore_flutter_plugin'
+version '1.0-SNAPSHOT'
+
+// Adăugăm namespace-ul aici
+namespace 'com.difrancescogianmarco.arcore_flutter_plugin'
+
+buildscript {
+    ext.kotlin_version = '1.9.22' // Actualizăm Kotlin
+    repositories {
+        google()
+        mavenCentral() // Înlocuim jcenter() cu mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.2' // Actualizăm AGP
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral() // Înlocuim jcenter() cu mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdkVersion 34 // Actualizăm compileSdkVersion
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 34 // Adăugăm targetSdkVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitAndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17 // Actualizăm la Java 17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17" // Actualizăm la Java 17
+    }
+
+    lintOptions {
+        textReport = true
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version" // Actualizăm la jdk8
+    implementation 'androidx.appcompat:appcompat:1.6.1' // Actualizăm versiunea
+    implementation 'com.google.ar:core:1.40.0' // Actualizăm versiunea
+    implementation 'com.google.ar.sceneform:core:1.17.1' // Actualizăm versiunea
+    implementation 'com.google.ar.sceneform:assets:1.17.1' // Actualizăm versiunea
+    implementation 'com.google.ar.sceneform.ux:sceneform-ux:1.17.1' // Actualizăm versiunea
+    implementation 'androidx.core:core-ktx:1.12.0' // Actualizăm versiunea
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3' // Actualizăm versiunea
+}
+
+afterEvaluate {
+    def containsEmbeddingDependencies = false
+    for (def configuration : configurations.all) {
+        for (def dependency in configuration.dependencies) {
+            if (dependency.group == 'io.flutter' &&
+                    dependency.name.startsWith('flutter_embedding') &&
+                    dependency.isTransitive())
+            {
+                containsEmbeddingDependencies = true
+                break
+            }
+        }
+    }
+    if (!containsEmbeddingDependencies) {
+        android {
+            dependencies {
+                def lifecycle_version = "2.6.2" // Actualizăm versiunea
+                compileOnly "androidx.lifecycle:lifecycle-runtime:$lifecycle_version"
+                compileOnly "androidx.lifecycle:lifecycle-common:$lifecycle_version"
+                compileOnly "androidx.lifecycle:lifecycle-common-java8:$lifecycle_version"
+            }
+        }
+    }
+} 

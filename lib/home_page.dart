@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'ar_scanner_page.dart';
+import 'package:image_picker/image_picker.dart';
+import 'ml/art_recognition.dart';
+import 'dart:io';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,6 +15,34 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final user = FirebaseAuth.instance.currentUser;
   static const Color gold = Color(0xFFFFD700);
+  final ArtRecognition _artRecognition = ArtRecognition();
+
+  @override
+  void initState() {
+    super.initState();
+    _artRecognition.loadModel();
+  }
+
+  @override
+  void dispose() {
+    _artRecognition.dispose();
+    super.dispose();
+  }
+
+  Future<void> _testModelWithImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      // TODO: Implement image recognition from gallery
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text('Funcționalitate în dezvoltare'),
+          content: Text('Recunoașterea din galerie va fi implementată în curând.'),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +97,10 @@ class _HomePageState extends State<HomePage> {
                       title: 'Scanare AR',
                       description: 'Scanează opere de artă pentru informații',
                       onTap: () {
-                        // TODO: Implement AR scanning
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ARScannerPage()),
+                        );
                       },
                     ),
                     _buildFeatureCard(
@@ -94,6 +129,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
+              ),
+              ElevatedButton(
+                onPressed: _testModelWithImage,
+                child: const Text('Testează modelul cu o imagine din galerie'),
               ),
             ],
           ),

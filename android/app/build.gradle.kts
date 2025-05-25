@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.artourguide_new"
-        minSdk = 26
+        minSdk = 28
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -1,0 +1,17 @@
+name: sceneview_flutter_example
+description: Demonstrates how to use the sceneview_flutter plugin.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+environment:
+  sdk: '>=2.18.5 <3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  sceneview_flutter:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
