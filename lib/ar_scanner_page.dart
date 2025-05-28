@@ -7,6 +7,11 @@ import 'ml/art_recognition.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart' show rootBundle; // Import rootBundle
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:firebase_storage/firebase_storage.dart'; // Import Firebase Storage
+import 'dart:typed_data'; // Import Uint8List
+import 'package:yuv_to_png/yuv_to_png.dart'; // Import yuv_to_png
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'art_ui.dart';
 
 // Added for camera setup
 late List<CameraDescription> cameras;
@@ -27,6 +32,7 @@ class _ARScannerPageState extends State<ARScannerPage> {
   String? _recognizedArtwork;
   double? _confidence;
   bool _isProcessingFrame = false;
+  Uint8List? _lastScannedImageBytes;
 
   // Firestore instance
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -69,10 +75,25 @@ class _ARScannerPageState extends State<ARScannerPage> {
               setState(() {
                 _recognizedArtwork = bestMatch;
                 _confidence = bestConfidence;
+                // TODO: Implement CameraImage to JPEG/PNG conversion and store the bytes
+                // _lastScannedImageBytes = image.bytes; // This line caused an error, need proper conversion
               });
-              _saveRecognitionResult(bestMatch!, bestConfidence!);
+              // Pass the image bytes to the save function
+              // We will need to convert CameraImage to a suitable format (e.g., JPEG) first
+              // This part needs further implementation
+               //_saveRecognitionResult(bestMatch!, bestConfidence!, null); // Pass null for now
+
+               // Convert CameraImage to PNG bytes and save
+               try {
+                 final pngBytes = YuvToPng.yuvToPng(image);
+                 _saveRecognitionResult(bestMatch!, bestConfidence!, pngBytes);
+                 print('Image converted and save initiated.');
+               } catch (e) {
+                 print('Error converting image: $e');
+                 _saveRecognitionResult(bestMatch!, bestConfidence!, null); // Save without image if conversion fails
+               }
             }
-            _isProcessingFrame = false;
+            _isProcessingFrame = false; // Reset flag to false after processing
           }
         });
         setState(() {});
@@ -82,79 +103,114 @@ class _ARScannerPageState extends State<ARScannerPage> {
     }
   }
 
-  Future<void> _saveRecognitionResult(String artworkName, double confidence) async {
+  Future<void> _saveRecognitionResult(String artworkName, double confidence, Uint8List? imageBytes) async {
     try {
+      String? imageUrl;
+      if (imageBytes != null) {
+        // Upload image to Firebase Storage
+        final storageRef = FirebaseStorage.instance.ref();
+        final imageFileName = 'scans/${DateTime.now().millisecondsSinceEpoch}.jpg'; // Unique filename
+        final uploadTask = storageRef.child(imageFileName).putData(imageBytes);
+        final snapshot = await uploadTask.whenComplete(() {});
+        imageUrl = await snapshot.ref.getDownloadURL();
+        print('Image uploaded to Firebase Storage: $imageUrl');
+      }
+
+      // Save recognition details to Firestore
       await _db.collection('recognition_results').add({
         'artworkName': artworkName,
         'confidence': confidence,
         'timestamp': FieldValue.serverTimestamp(),
+        'imageUrl': imageUrl, // Save the image URL
+        'userId': FirebaseAuth.instance.currentUser?.uid, // Add user ID
       });
-      print('Recognition result saved to Firebase: $artworkName ($confidence)');
+      print('Recognition result saved to Firestore: $artworkName ($confidence)');
     } catch (e) {
-      print('Error saving recognition result to Firebase: $e');
+      print('Error saving recognition result: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AR Scanner'),
-        actions: [
-          IconButton(
-            icon: Icon(isScanning ? Icons.stop : Icons.play_arrow),
-            onPressed: () {
-              setState(() {
-                isScanning = !isScanning;
-              });
-            },
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          if (cameraController != null && cameraController!.value.isInitialized)
-            CameraPreview(cameraController!)
-          else
-            const Center(child: CircularProgressIndicator()),
+    return ArtBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Scanare AR', style: TextStyle(fontFamily: ArtFonts.title, fontWeight: FontWeight.bold, fontSize: 26)),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: ArtColors.gold,
+        ),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (cameraController != null && cameraController!.value.isInitialized)
+              CameraPreview(cameraController!)
+            else
+              const Center(child: CircularProgressIndicator()),
 
-          // Temporarily commented out SceneView to test camera preview
-          // SceneView(sceneViewController),
+            // Temporarily commented out SceneView to test camera preview
+            // SceneView(sceneViewController),
 
-          if (_recognizedArtwork != null)
             Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: Card(
-                color: Colors.black.withOpacity(0.8),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _recognizedArtwork!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (_confidence != null)
-                        Text(
-                          'Confidence: ${(_confidence! * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                    ],
+              bottom: 32,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      isScanning = !isScanning;
+                    });
+                  },
+                  icon: Icon(isScanning ? Icons.stop : Icons.camera_alt),
+                  label: Text(isScanning ? 'Stop Scan' : 'Scan Artwork'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ArtColors.gold,
+                    foregroundColor: ArtColors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    elevation: 6,
                   ),
                 ),
               ),
             ),
-        ],
+
+            if (_recognizedArtwork != null)
+              Positioned(
+                bottom: 100,
+                left: 20,
+                right: 20,
+                child: Card(
+                  color: Colors.black.withOpacity(0.8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _recognizedArtwork!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (_confidence != null)
+                          Text(
+                            'Confidence: ${(_confidence! * 100).toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

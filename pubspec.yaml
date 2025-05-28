@@ -22,6 +22,11 @@ dependencies:
     path: packages/sceneview_flutter
   path_provider: ^2.1.2
   permission_handler: ^12.0.0+1
+  firebase_storage: ^11.6.10
+  yuv_to_png: ^0.0.2
+  geolocator: ^11.0.0
+  google_places_flutter: ^2.0.6
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -37,10 +42,18 @@ flutter:
   assets:
     - assets/model/model.tflite
     - assets/model/labels.txt
+    - assets/brush_strokes.png
 
   fonts:
     - family: Merriweather
       fonts:
         - asset: assets/fonts/Merriweather-Regular.ttf
         - asset: assets/fonts/Merriweather-Bold.ttf
-          weight: 700 
+          weight: 700
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlayfairDisplay-Italic.ttf
+          style: italic

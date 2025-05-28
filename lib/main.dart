@@ -3,34 +3,51 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:artourguide_new/home_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'art_ui.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const MyApp());
+  runApp(const ArtTourGuideApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ArtTourGuideApp extends StatelessWidget {
+  const ArtTourGuideApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'AR Tour Guide',
       theme: ThemeData(
-
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        fontFamily: 'Merriweather',
+        fontFamily: ArtFonts.body,
+        scaffoldBackgroundColor: Colors.transparent,
+        colorScheme: ColorScheme.fromSwatch().copyWith(
+          primary: ArtColors.gold,
+          secondary: ArtColors.accent,
+          background: ArtColors.black,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: IconThemeData(color: ArtColors.gold),
+          titleTextStyle: TextStyle(
+            color: ArtColors.gold,
+            fontFamily: ArtFonts.title,
+            fontWeight: FontWeight.bold,
+            fontSize: 26,
+          ),
+        ),
       ),
-      home: const WelcomePage(),
+      home: ArtBackground(
+        child: WelcomePage(),
+      ),
     );
   }
 }
 
 class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
-  static const Color gold = Color(0xFFFFD700);
 
   @override
   State<WelcomePage> createState() => _WelcomePageState();
@@ -146,46 +163,65 @@ class _WelcomePageState extends State<WelcomePage> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Center(
+    return ArtBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 28.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.museum, size: 64, color: WelcomePage.gold),
+                  // Logo animat
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.7, end: 1.0),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) => Transform.scale(
+                      scale: value,
+                      child: child,
+                    ),
+                    child: Icon(Icons.museum, size: 72, color: ArtColors.gold.withOpacity(0.95), shadows: [
+                      Shadow(color: ArtColors.gold.withOpacity(0.4), blurRadius: 24),
+                    ]),
+                  ),
                   const SizedBox(height: 32),
+                  // Titlu artistic
                   Text(
                     'AR Tour Guide',
                     style: TextStyle(
-                      color: WelcomePage.gold,
-                      fontSize: 36,
+                      color: ArtColors.gold,
+                      fontSize: 38,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'Merriweather',
+                      fontFamily: ArtFonts.title,
+                      shadows: [
+                        Shadow(color: ArtColors.gold.withOpacity(0.3), blurRadius: 12),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
+                  // Citat artistic
                   Text(
-                    'Discover art like never before. Explore, learn, and enjoy art with AR!',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                    'Descoperă arta cu tehnologie și eleganță.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white.withOpacity(0.85),
+                      fontFamily: ArtFonts.body,
+                      fontStyle: FontStyle.italic,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: WelcomePage.gold.withOpacity(0.2)),
-                    ),
+                  // Card login/signup cu glassmorphism
+                  ArtGlassCard(
+                    padding: const EdgeInsets.all(0),
                     child: Column(
                       children: [
                         TabBar(
                           controller: _tabController,
-                          indicatorColor: WelcomePage.gold,
-                          labelColor: WelcomePage.gold,
+                          indicatorColor: ArtColors.gold,
+                          labelColor: ArtColors.gold,
                           unselectedLabelColor: Colors.white70,
                           tabs: const [
                             Tab(text: 'Login'),
@@ -196,38 +232,38 @@ class _WelcomePageState extends State<WelcomePage> with SingleTickerProviderStat
                           height: 270,
                           padding: const EdgeInsets.all(16),
                           child: _isLoading
-                              ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+                              ? const Center(child: CircularProgressIndicator(color: ArtColors.gold))
                               : TabBarView(
-                            controller: _tabController,
-                            children: [
-                              // LOGIN TAB
-                              Column(
-                                children: [
-                                  _buildTextField(_loginEmailController, 'Email'),
-                                  const SizedBox(height: 12),
-                                  _buildTextField(_loginPasswordController, 'Password', obscure: true),
-                                  const SizedBox(height: 24),
-                                  _buildGoldButton('Log In', onPressed: _login),
-                                ],
-                              ),
-                              // SIGN UP TAB
-                              SingleChildScrollView(
-                                child: Column(
+                                  controller: _tabController,
                                   children: [
-                                    _buildTextField(_signupNameController, 'Name'),
-                                    const SizedBox(height: 12),
-                                    _buildTextField(_signupEmailController, 'Email'),
-                                    const SizedBox(height: 12),
-                                    _buildTextField(_signupPasswordController, 'Password', obscure: true),
-                                    const SizedBox(height: 12),
-                                    _buildTextField(_signupConfirmController, 'Confirm Password', obscure: true),
-                                    const SizedBox(height: 24),
-                                    _buildGoldButton('Sign Up', onPressed: _signUp),
+                                    // LOGIN TAB
+                                    Column(
+                                      children: [
+                                        _buildTextField(_loginEmailController, 'Email'),
+                                        const SizedBox(height: 12),
+                                        _buildTextField(_loginPasswordController, 'Password', obscure: true),
+                                        const SizedBox(height: 24),
+                                        _buildGoldButton('Log In', onPressed: _login),
+                                      ],
+                                    ),
+                                    // SIGN UP TAB
+                                    SingleChildScrollView(
+                                      child: Column(
+                                        children: [
+                                          _buildTextField(_signupNameController, 'Name'),
+                                          const SizedBox(height: 12),
+                                          _buildTextField(_signupEmailController, 'Email'),
+                                          const SizedBox(height: 12),
+                                          _buildTextField(_signupPasswordController, 'Password', obscure: true),
+                                          const SizedBox(height: 12),
+                                          _buildTextField(_signupConfirmController, 'Confirm Password', obscure: true),
+                                          const SizedBox(height: 24),
+                                          _buildGoldButton('Sign Up', onPressed: _signUp),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
-                              ),
-                            ],
-                          ),
                         ),
                       ],
                     ),
@@ -253,15 +289,15 @@ class _WelcomePageState extends State<WelcomePage> with SingleTickerProviderStat
         fillColor: Colors.black.withOpacity(0.5),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: WelcomePage.gold.withOpacity(0.5)),
+          borderSide: BorderSide(color: ArtColors.gold.withOpacity(0.5)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: WelcomePage.gold.withOpacity(0.2)),
+          borderSide: BorderSide(color: ArtColors.gold.withOpacity(0.2)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: WelcomePage.gold),
+          borderSide: BorderSide(color: ArtColors.gold),
         ),
       ),
     );
@@ -274,7 +310,7 @@ class _WelcomePageState extends State<WelcomePage> with SingleTickerProviderStat
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: WelcomePage.gold,
+          backgroundColor: ArtColors.gold,
           foregroundColor: Colors.black,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
