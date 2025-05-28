@@ -8,6 +8,12 @@ import 'art_ui.dart';
 import 'package:image_picker/image_picker.dart';
 import 'ml/art_recognition.dart';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'services/artwork_service.dart';
+import 'package:path_provider/path_provider.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,7 +25,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   final user = FirebaseAuth.instance.currentUser;
   final ArtRecognition _artRecognition = ArtRecognition();
+  final ArtworkService _artworkService = ArtworkService();
   late AnimationController _controller;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -40,16 +48,106 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _testModelWithImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      showDialog(
-        context: context,
-        builder: (context) => const AlertDialog(
-          title: Text('Funcționalitate în dezvoltare'),
-          content: Text('Recunoașterea din galerie va fi implementată în curând.'),
-        ),
-      );
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      // Procesăm imaginea din galerie
+      final result = await _artRecognition.recognizeImageFromGallery(File(image.path));
+      
+      if (result.isEmpty) {
+        print('No results from gallery image');
+        return;
+      }
+
+      final results = result['results'] as Map<String, double>;
+      final imageBytes = result['imageBytes'] as Uint8List;
+
+      // Găsim cea mai bună potrivire
+      String? bestMatch;
+      double? bestConfidence;
+      double confidenceThreshold = 0.3;
+
+      results.forEach((label, confidence) {
+        if (confidence > confidenceThreshold && (bestConfidence == null || confidence > bestConfidence!)) {
+          bestMatch = label;
+          bestConfidence = confidence;
+        }
+      });
+
+      if (bestMatch != null && bestConfidence != null) {
+        // Salvăm rezultatul în Firebase
+        await _saveRecognitionResult(bestMatch!, bestConfidence!, imageBytes);
+        // Poți afișa un mesaj de succes sau să folosești direct datele salvate
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Opera a fost recunoscută și salvată!',
+                style: TextStyle(fontFamily: ArtFonts.body),
+              ),
+              backgroundColor: ArtColors.gold,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Nu s-a putut recunoaște opera',
+                style: TextStyle(fontFamily: ArtFonts.body),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error testing model: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Eroare: $e',
+              style: const TextStyle(fontFamily: ArtFonts.body),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Adăugăm funcția de salvare în Firebase
+  Future<void> _saveRecognitionResult(String artworkName, double confidence, Uint8List? imageBytes) async {
+    try {
+      File? imageFile;
+      if (imageBytes != null) {
+        final tempDir = await getTemporaryDirectory();
+        imageFile = await File('${tempDir.path}/$artworkName.jpg').writeAsBytes(imageBytes);
+      }
+      if (imageFile != null) {
+        await _artworkService.saveArtworkDetails(
+          artworkName: artworkName,
+          confidence: confidence,
+          imageFile: imageFile,
+          modelDetails: null,
+        );
+        print('Recognition result with Wikipedia details saved to Firestore: $artworkName ($confidence)');
+      } else {
+        // fallback dacă nu ai imagine, poți salva doar datele minime
+        await FirebaseFirestore.instance.collection('recognition_results').add({
+          'artworkName': artworkName,
+          'confidence': confidence,
+          'timestamp': FieldValue.serverTimestamp(),
+          'imageUrl': null,
+          'userId': FirebaseAuth.instance.currentUser?.uid,
+        });
+        print('Recognition result (fără imagine) salvat.');
+      }
+    } catch (e) {
+      print('Error saving recognition result: $e');
     }
   }
 
@@ -194,17 +292,62 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 ),
                 const SizedBox(height: 10),
                 Center(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ArtColors.gold,
-                      foregroundColor: ArtColors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      elevation: 6,
-                    ),
-                    icon: const Icon(Icons.image, size: 22),
-                    label: const Text('Testează modelul cu o imagine din galerie', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
-                    onPressed: _testModelWithImage,
+                  child: Column(
+                    children: [
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ArtColors.gold,
+                          foregroundColor: ArtColors.black,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          elevation: 6,
+                        ),
+                        icon: const Icon(Icons.image, size: 22),
+                        label: const Text('Testează modelul cu o imagine din galerie', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
+                        onPressed: _testModelWithImage,
+                      ),
+                      const SizedBox(height: 10),
+                      // Buton temporar pentru popularea bazei de date
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          elevation: 6,
+                        ),
+                        icon: const Icon(Icons.storage, size: 22),
+                        label: const Text('Populează baza de date cu detaliile operelor', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          try {
+                            await _artworkService.populateArtworkDetails();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Baza de date a fost populată cu succes!',
+                                    style: TextStyle(fontFamily: ArtFonts.body),
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Eroare: $e',
+                                    style: const TextStyle(fontFamily: ArtFonts.body),
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],

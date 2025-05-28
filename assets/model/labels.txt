@@ -1,3 +1,20 @@
-0 The Girl With a Pearl Earring
-1 Guernica
-2 Starry Night
+0 American Gothic
+1 Cafe Terrace at Night
+2 Guernica
+3 Impression Sunrise
+4 Las Meninas
+5 Liberty Leading the People
+6 Napoleon Crossing the Alps
+7 Nighthawks
+8 Starry Night
+9 The Birth of Venus
+10 The Creation of Adam
+11 The Great Wave off
+12 The Kiss
+13 The Last Supper
+14 The Night Watch
+15 The Persistence
+16 The Scream
+17 Water Lilies
+18 Whistler's Mother
+19 Girl with A Pearl Earring

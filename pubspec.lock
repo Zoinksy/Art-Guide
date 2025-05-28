@@ -820,11 +820,11 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.0"
-  yuv_to_png:
+  yuv_converter:
     dependency: "direct main"
     description:
-      name: yuv_to_png
-      sha256: "188394fe907caa65741bf07480e170643ce8f48d2af5abb49fde64148d1d4217"
+      name: yuv_converter
+      sha256: "6f58c663615677346f36912dbdd62e8f3da611b89fc2951d636a825380064025"
       url: "https://pub.dev"
     source: hosted
     version: "0.0.2"

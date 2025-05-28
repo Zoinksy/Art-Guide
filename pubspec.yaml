@@ -23,11 +23,10 @@ dependencies:
   path_provider: ^2.1.2
   permission_handler: ^12.0.0+1
   firebase_storage: ^11.6.10
-  yuv_to_png: ^0.0.2
   geolocator: ^11.0.0
   google_places_flutter: ^2.0.6
-  http: ^1.2.0
-
+  yuv_converter: ^0.0.2
+  http: ^1.1.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -38,8 +37,10 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
-
   assets:
+    - assets/images/
+    - assets/models/
+    - assets/labels/
     - assets/model/model.tflite
     - assets/model/labels.txt
     - assets/brush_strokes.png

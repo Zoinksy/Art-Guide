@@ -11,16 +11,19 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStateMixin {
+class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin {
   // Get the current user to potentially filter results
   final currentUser = FirebaseAuth.instance.currentUser;
   final Set<String> _favorites = {}; // Will store artworkName|timestamp as unique key
   late AnimationController _controller;
+  late TabController _tabController;
+  Map<String, dynamic>? _selectedScan;
 
   @override
   void initState() {
     super.initState();
     _loadFavorites();
+    _tabController = TabController(length: 2, vsync: this);
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -31,6 +34,7 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
   @override
   void dispose() {
     _controller.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -115,17 +119,19 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
             backgroundColor: Colors.transparent,
             elevation: 0,
             foregroundColor: ArtColors.gold,
-            bottom: const TabBar(
-              tabs: [
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: const [
                 Tab(text: 'Poze'),
                 Tab(text: 'Detalii'),
               ],
             ),
           ),
           body: TabBarView(
+            controller: _tabController,
             children: [
               _buildScanHistoryList(currentUser),
-              const Center(child: Text('Detalii scanare (în curând)', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18))),
+              _buildDetailsTab(),
             ],
           ),
         ),
@@ -182,97 +188,224 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
             }
 
             // Wrap Card in Dismissible for swipe-to-delete
-            return AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                final delay = index * 0.06;
-                final animValue = (_controller.value - delay).clamp(0.0, 1.0);
-                return Opacity(
-                  opacity: animValue,
-                  child: Transform.translate(
-                    offset: Offset(0, 40 * (1 - animValue)),
-                    child: child,
-                  ),
-                );
-              },
-              child: ArtGlassCard(
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                  leading: imageUrl != null && imageUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: SizedBox(
-                            width: 60,
-                            height: 60,
-                            child: GestureDetector(
-                              onTap: () => _showEnlargedImage(context, imageUrl!),
-                              child: Image.network(
-                                imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(Icons.broken_image, color: Colors.grey),
-                              ),
-                            ),
-                          ),
-                        )
-                      : const Icon(Icons.image_not_supported, size: 60, color: Colors.grey), // Placeholder if no image URL with grey icon and increased size
-                  title: Text(
-                    artworkName,
-                    style: const TextStyle(
-                      color: ArtColors.gold,
-                      fontFamily: ArtFonts.title,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Încredere: ${(confidence * 100).toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontFamily: ArtFonts.body,
-                          fontSize: 14,
-                        ),
+            return Dismissible(
+              key: Key(docId),
+              direction: DismissDirection.startToEnd, // swipe right
+              background: Container(
+                color: Colors.red,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: const Icon(Icons.delete, color: Colors.white, size: 32),
+              ),
+              confirmDismiss: (direction) async {
+                return await showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Confirmă ștergerea'),
+                    content: const Text('Ești sigur că vrei să ștergi această scanare?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Anulează'),
                       ),
-                      Text(
-                        'Data: $formattedTime',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontFamily: ArtFonts.body,
-                          fontSize: 12,
-                        ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Șterge', style: TextStyle(color: Colors.red)),
                       ),
                     ],
                   ),
-                  trailing: AnimatedFavoriteIcon(
-                    isFavorite: _favorites.contains(favKey),
+                );
+              },
+              onDismissed: (direction) async {
+                await FirebaseFirestore.instance.collection('recognition_results').doc(docId).delete();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Scanarea a fost ștearsă!')),
+                );
+              },
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final delay = index * 0.06;
+                  final animValue = (_controller.value - delay).clamp(0.0, 1.0);
+                  return Opacity(
+                    opacity: animValue,
+                    child: Transform.translate(
+                      offset: Offset(0, 40 * (1 - animValue)),
+                      child: child,
+                    ),
+                  );
+                },
+                child: ArtGlassCard(
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    leading: imageUrl != null && imageUrl.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              width: 60,
+                              height: 60,
+                              child: GestureDetector(
+                                onTap: () => _showEnlargedImage(context, imageUrl!),
+                                child: Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.broken_image, color: Colors.grey),
+                                ),
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.image_not_supported, size: 60, color: Colors.grey), // Placeholder if no image URL with grey icon and increased size
+                    title: Text(
+                      artworkName,
+                      style: const TextStyle(
+                        color: ArtColors.gold,
+                        fontFamily: ArtFonts.title,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Încredere: ${(confidence * 100).toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: ArtFonts.body,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          'Data: $formattedTime',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontFamily: ArtFonts.body,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedFavoriteIcon(
+                          isFavorite: _favorites.contains(favKey),
+                          onTap: () {
+                            if (timestamp == null) return;
+                            (() async {
+                              await _toggleFavorite(artworkName, imageUrl, confidence, timestamp);
+                              if (_favorites.contains(favKey)) {
+                                ArtSnackBar.show(context, 'Adăugat la favorite', icon: Icons.favorite, color: ArtColors.gold);
+                              } else {
+                                ArtSnackBar.show(context, 'Eliminat din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
+                              }
+                            })();
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.info_outline, color: ArtColors.gold),
+                          tooltip: 'See details',
+                          onPressed: () {
+                            _showDetailsDialog(context, data);
+                          },
+                        ),
+                      ],
+                    ),
+                    // Add onTap to view details later if needed
                     onTap: () {
-                      if (timestamp == null) return;
-                      (() async {
-                        await _toggleFavorite(artworkName, imageUrl, confidence, timestamp);
-                        if (_favorites.contains(favKey)) {
-                          ArtSnackBar.show(context, 'Adăugat la favorite', icon: Icons.favorite, color: ArtColors.gold);
-                        } else {
-                          ArtSnackBar.show(context, 'Eliminat din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
-                        }
-                      })();
+                      setState(() {
+                        _selectedScan = data;
+                      });
+                      _tabController.animateTo(1);
                     },
                   ),
-                  // Add onTap to view details later if needed
-                  onTap: () {
-                    // TODO: Implement navigation to a detail view or show dialog, passing docId or data
-                     print('Tapped on item with ID: $docId');
-                     // Example: Navigator.push(...);
-                  },
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildDetailsTab() {
+    if (_selectedScan == null) {
+      return const Center(
+        child: Text('Selectează o scanare din tab-ul Poze pentru detalii.',
+            style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
+      );
+    }
+    final details = _selectedScan!['details'] as Map<String, dynamic>?;
+    final artworkName = _selectedScan!['artworkName'] ?? 'Necunoscut';
+    final confidence = (_selectedScan!['confidence'] as num?)?.toDouble() ?? 0.0;
+    final timestamp = _selectedScan!['timestamp'] as Timestamp?;
+    final imageUrl = _selectedScan!['imageUrl'] as String?;
+    String formattedTime = 'Data indisponibilă';
+    if (timestamp != null) {
+      final dateTime = timestamp.toDate();
+      formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}';
+    }
+    // Folosește detaliile din Firestore dacă există, altfel fallback la datele de bază
+    final title = details?['title'] ?? artworkName;
+    final artist = details?['artist'] ?? '';
+    final year = details?['year'] ?? '';
+    final style = details?['style'] ?? '';
+    final location = details?['location'] ?? '';
+    final description = details?['description'] ?? '';
+    final artworkImageUrl = details?['imageUrl'] ?? imageUrl ?? '';
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (artworkImageUrl.isNotEmpty)
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  artworkImageUrl,
+                  height: 220,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.broken_image, color: Colors.grey, size: 120),
+                ),
+              ),
+            ),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: const TextStyle(
+              color: ArtColors.gold,
+              fontFamily: ArtFonts.title,
+              fontWeight: FontWeight.bold,
+              fontSize: 26,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (artist.isNotEmpty)
+            Text('Artist: $artist', style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
+          if (year.isNotEmpty)
+            Text('An: $year', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+          if (style.isNotEmpty)
+            Text('Stil: $style', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+          if (location.isNotEmpty)
+            Text('Locație: $location', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+          const SizedBox(height: 10),
+          Text('Încredere: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+          Text('Scanat la: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+          const SizedBox(height: 18),
+          if (description.isNotEmpty)
+            Text('Descriere:', style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title, fontSize: 20)),
+          if (description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(description, style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+            ),
+        ],
+      ),
     );
   }
 
@@ -292,6 +425,59 @@ class _HistoryPageState extends State<HistoryPage> with SingleTickerProviderStat
           ),
         ),
       ),
+    );
+  }
+
+  void _showDetailsDialog(BuildContext context, Map<String, dynamic> data) {
+    final details = data['details'] as Map<String, dynamic>? ?? {};
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.black87,
+          title: Text(
+            details['title'] ?? data['artworkName'] ?? 'Detalii operă',
+            style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if ((details['imageUrl'] ?? data['imageUrl']) != null && (details['imageUrl'] ?? data['imageUrl']).toString().isNotEmpty)
+                  Center(
+                    child: Image.network(
+                      details['imageUrl'] ?? data['imageUrl'],
+                      height: 180,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey, size: 80),
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                if (details['artist'] != null && details['artist'].toString().isNotEmpty)
+                  Text('Artist: ${details['artist']}', style: const TextStyle(color: ArtColors.gold)),
+                if (details['year'] != null && details['year'].toString().isNotEmpty)
+                  Text('An: ${details['year']}', style: const TextStyle(color: Colors.white)),
+                if (details['style'] != null && details['style'].toString().isNotEmpty)
+                  Text('Stil: ${details['style']}', style: const TextStyle(color: Colors.white)),
+                if (details['location'] != null && details['location'].toString().isNotEmpty)
+                  Text('Locație: ${details['location']}', style: const TextStyle(color: Colors.white)),
+                const SizedBox(height: 10),
+                if (details['description'] != null && details['description'].toString().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(details['description'], style: const TextStyle(color: Colors.white)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Închide', style: TextStyle(color: ArtColors.gold)),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
     );
   }
 }

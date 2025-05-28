@@ -9,9 +9,10 @@ import 'package:flutter/services.dart' show rootBundle; // Import rootBundle
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import 'package:firebase_storage/firebase_storage.dart'; // Import Firebase Storage
 import 'dart:typed_data'; // Import Uint8List
-import 'package:yuv_to_png/yuv_to_png.dart'; // Import yuv_to_png
 import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 import 'art_ui.dart';
+import 'package:image_picker/image_picker.dart';
+import 'services/artwork_service.dart';
 
 // Added for camera setup
 late List<CameraDescription> cameras;
@@ -23,7 +24,7 @@ class ARScannerPage extends StatefulWidget {
   State<ARScannerPage> createState() => _ARScannerPageState();
 }
 
-class _ARScannerPageState extends State<ARScannerPage> {
+class _ARScannerPageState extends State<ARScannerPage> with WidgetsBindingObserver {
   SceneView? sceneView;
   final SceneViewController sceneViewController = SceneViewController();
   CameraController? cameraController;
@@ -33,9 +34,11 @@ class _ARScannerPageState extends State<ARScannerPage> {
   double? _confidence;
   bool _isProcessingFrame = false;
   Uint8List? _lastScannedImageBytes;
+  final ImagePicker _picker = ImagePicker();
 
   // Firestore instance
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final ArtworkService _artworkService = ArtworkService();
 
   @override
   void initState() {
@@ -60,9 +63,10 @@ class _ARScannerPageState extends State<ARScannerPage> {
           if (isScanning && !_isProcessingFrame) {
             _isProcessingFrame = true;
             final results = await _artRecognition.recognizeArtwork(image);
+            print('Scoruri model: ' + results.toString()); // DEBUG: Afișează toate scorurile
             String? bestMatch;
             double? bestConfidence;
-            double confidenceThreshold = 0.8;
+            double confidenceThreshold = 0.3; // Scăzut pentru test
 
             results.forEach((label, confidence) {
               if (confidence > confidenceThreshold && (bestConfidence == null || confidence > bestConfidence!)) {
@@ -83,15 +87,7 @@ class _ARScannerPageState extends State<ARScannerPage> {
               // This part needs further implementation
                //_saveRecognitionResult(bestMatch!, bestConfidence!, null); // Pass null for now
 
-               // Convert CameraImage to PNG bytes and save
-               try {
-                 final pngBytes = YuvToPng.yuvToPng(image);
-                 _saveRecognitionResult(bestMatch!, bestConfidence!, pngBytes);
-                 print('Image converted and save initiated.');
-               } catch (e) {
-                 print('Error converting image: $e');
-                 _saveRecognitionResult(bestMatch!, bestConfidence!, null); // Save without image if conversion fails
-               }
+               // Nu mai este nevoie de conversie manuală YUV->PNG aici, imaginea pentru debug se salvează în ArtRecognition
             }
             _isProcessingFrame = false; // Reset flag to false after processing
           }
@@ -105,28 +101,78 @@ class _ARScannerPageState extends State<ARScannerPage> {
 
   Future<void> _saveRecognitionResult(String artworkName, double confidence, Uint8List? imageBytes) async {
     try {
-      String? imageUrl;
+      File? imageFile;
       if (imageBytes != null) {
-        // Upload image to Firebase Storage
-        final storageRef = FirebaseStorage.instance.ref();
-        final imageFileName = 'scans/${DateTime.now().millisecondsSinceEpoch}.jpg'; // Unique filename
-        final uploadTask = storageRef.child(imageFileName).putData(imageBytes);
-        final snapshot = await uploadTask.whenComplete(() {});
-        imageUrl = await snapshot.ref.getDownloadURL();
-        print('Image uploaded to Firebase Storage: $imageUrl');
+        final tempDir = await getTemporaryDirectory();
+        imageFile = await File('${tempDir.path}/$artworkName.jpg').writeAsBytes(imageBytes);
       }
-
-      // Save recognition details to Firestore
-      await _db.collection('recognition_results').add({
-        'artworkName': artworkName,
-        'confidence': confidence,
-        'timestamp': FieldValue.serverTimestamp(),
-        'imageUrl': imageUrl, // Save the image URL
-        'userId': FirebaseAuth.instance.currentUser?.uid, // Add user ID
-      });
-      print('Recognition result saved to Firestore: $artworkName ($confidence)');
+      if (imageFile != null) {
+        await _artworkService.saveArtworkDetails(
+          artworkName: artworkName,
+          confidence: confidence,
+          imageFile: imageFile,
+          modelDetails: null,
+        );
+        print('Recognition result with Wikipedia details saved to Firestore: $artworkName ($confidence)');
+      } else {
+        // fallback dacă nu ai imagine, poți salva doar datele minime
+        await FirebaseFirestore.instance.collection('recognition_results').add({
+          'artworkName': artworkName,
+          'confidence': confidence,
+          'timestamp': FieldValue.serverTimestamp(),
+          'imageUrl': null,
+          'userId': FirebaseAuth.instance.currentUser?.uid,
+        });
+        print('Recognition result (fără imagine) salvat.');
+      }
     } catch (e) {
       print('Error saving recognition result: $e');
+    }
+  }
+
+  Future<void> _pickAndProcessImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      setState(() {
+        isScanning = false; // Oprim scanarea camerei
+      });
+
+      // Procesăm imaginea din galerie
+      final result = await _artRecognition.recognizeImageFromGallery(File(image.path));
+      
+      if (result.isEmpty) {
+        print('No results from gallery image');
+        return;
+      }
+
+      final results = result['results'] as Map<String, double>;
+      final imageBytes = result['imageBytes'] as Uint8List;
+
+      // Găsim cea mai bună potrivire
+      String? bestMatch;
+      double? bestConfidence;
+      double confidenceThreshold = 0.3;
+
+      results.forEach((label, confidence) {
+        if (confidence > confidenceThreshold && (bestConfidence == null || confidence > bestConfidence!)) {
+          bestMatch = label;
+          bestConfidence = confidence;
+        }
+      });
+
+      if (bestMatch != null && bestConfidence != null) {
+        setState(() {
+          _recognizedArtwork = bestMatch;
+          _confidence = bestConfidence;
+        });
+
+        // Salvăm rezultatul în Firebase
+        await _saveRecognitionResult(bestMatch!, bestConfidence!, imageBytes);
+      }
+    } catch (e) {
+      print('Error picking/processing image: $e');
     }
   }
 
@@ -140,6 +186,14 @@ class _ARScannerPageState extends State<ARScannerPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: ArtColors.gold,
+          actions: [
+            // Adăugăm buton pentru galerie în AppBar
+            IconButton(
+              icon: const Icon(Icons.photo_library),
+              onPressed: _pickAndProcessImage,
+              tooltip: 'Selectează din galerie',
+            ),
+          ],
         ),
         body: Stack(
           fit: StackFit.expand,

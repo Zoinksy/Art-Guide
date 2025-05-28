@@ -144,40 +144,65 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                           ),
                         ],
                       ),
-                      trailing: AnimatedFavoriteIcon(
-                        isFavorite: true,
-                        onTap: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              backgroundColor: ArtColors.black,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                              title: const Text('Confirmă ștergerea', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title)),
-                              content: const Text('Ești sigur că vrei să ștergi această operă din favorite?', style: TextStyle(color: Colors.white)),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(context).pop(false),
-                                  child: const Text('Anulează', style: TextStyle(color: ArtColors.accent)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedFavoriteIcon(
+                            isFavorite: true,
+                            onTap: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  backgroundColor: ArtColors.black,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                                  title: const Text('Confirmă ștergerea', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title)),
+                                  content: const Text('Ești sigur că vrei să ștergi această operă din favorite?', style: TextStyle(color: Colors.white)),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(false),
+                                      child: const Text('Anulează', style: TextStyle(color: ArtColors.accent)),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(true),
+                                      child: const Text('Șterge', style: TextStyle(color: ArtColors.gold)),
+                                    ),
+                                  ],
                                 ),
-                                TextButton(
-                                  onPressed: () => Navigator.of(context).pop(true),
-                                  child: const Text('Șterge', style: TextStyle(color: ArtColors.gold)),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            try {
-                              await FirebaseFirestore.instance
-                                  .collection('favorites')
-                                  .doc(docId)
-                                  .delete();
-                              ArtSnackBar.show(context, 'Operă eliminată din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
-                            } catch (e) {
-                              ArtSnackBar.show(context, 'Eroare la ștergere: $e', icon: Icons.error, color: Colors.redAccent);
-                            }
-                          }
-                        },
+                              );
+                              if (confirm == true) {
+                                try {
+                                  await FirebaseFirestore.instance
+                                      .collection('favorites')
+                                      .doc(docId)
+                                      .delete();
+                                  ArtSnackBar.show(context, 'Operă eliminată din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
+                                } catch (e) {
+                                  ArtSnackBar.show(context, 'Eroare la ștergere: $e', icon: Icons.error, color: Colors.redAccent);
+                                }
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.info_outline, color: ArtColors.gold),
+                            tooltip: 'See details',
+                            onPressed: () async {
+                              // Caută detaliile din recognition_results după artworkName și timestamp
+                              Map<String, dynamic>? detailsData;
+                              if (timestamp != null) {
+                                final results = await FirebaseFirestore.instance
+                                    .collection('recognition_results')
+                                    .where('userId', isEqualTo: currentUser?.uid)
+                                    .where('artworkName', isEqualTo: artworkName)
+                                    .where('timestamp', isEqualTo: timestamp)
+                                    .get();
+                                if (results.docs.isNotEmpty) {
+                                  detailsData = results.docs.first.data();
+                                }
+                              }
+                              _showDetailsDialog(context, data, detailsData);
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -205,6 +230,79 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                 const Icon(Icons.broken_image, size: 50, color: Colors.white),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDetailsDialog(BuildContext context, Map<String, dynamic> favData, Map<String, dynamic>? scanData) {
+    final details = scanData != null ? (scanData['details'] as Map<String, dynamic>? ?? {}) : {};
+    final artworkName = favData['artworkName'] ?? 'Necunoscut';
+    final confidence = (favData['confidence'] as num?)?.toDouble() ?? 0.0;
+    final timestamp = favData['timestamp'] as Timestamp?;
+    final imageUrl = favData['imageUrl'] as String?;
+    String formattedTime = 'Data indisponibilă';
+    if (timestamp != null) {
+      final dateTime = timestamp.toDate();
+      formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}';
+    }
+    final title = details['title'] ?? artworkName;
+    final artist = details['artist'] ?? '';
+    final year = details['year'] ?? '';
+    final style = details['style'] ?? '';
+    final location = details['location'] ?? '';
+    final description = details['description'] ?? '';
+    final artworkImageUrl = details['imageUrl'] ?? imageUrl ?? '';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black87,
+        title: Text(
+          title,
+          style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (artworkImageUrl.isNotEmpty)
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      artworkImageUrl,
+                      height: 180,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey, size: 80),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              if (artist.isNotEmpty)
+                Text('Artist: $artist', style: const TextStyle(color: ArtColors.gold)),
+              if (year.isNotEmpty)
+                Text('An: $year', style: const TextStyle(color: Colors.white)),
+              if (style.isNotEmpty)
+                Text('Stil: $style', style: const TextStyle(color: Colors.white)),
+              if (location.isNotEmpty)
+                Text('Locație: $location', style: const TextStyle(color: Colors.white)),
+              const SizedBox(height: 10),
+              Text('Încredere: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+              Text('Adăugat la: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+              const SizedBox(height: 10),
+              if (description.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(description, style: const TextStyle(color: Colors.white)),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Închide', style: TextStyle(color: ArtColors.gold)),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
     );
   }
