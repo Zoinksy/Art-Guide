@@ -90,19 +90,22 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
         setState(() {
           _favorites.add(favKey);
         });
-        ArtSnackBar.show(context, 'Adăugat la favorite', icon: Icons.favorite, color: ArtColors.gold);
+        ArtSnackBar.show(context, 'Added to favorites', icon: Icons.favorite, color: ArtColors.gold);
       } else {
         // Remove from favorites
         await querySnapshot.docs.first.reference.delete();
         setState(() {
           _favorites.remove(favKey);
         });
-        ArtSnackBar.show(context, 'Eliminat din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
+        ArtSnackBar.show(context, 'Removed from favorites', icon: Icons.favorite_border, color: Colors.redAccent);
       }
     } catch (e) {
       print('Error toggling favorite: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Eroare: $e')),
+      ArtSnackBar.show(
+        context, 
+        'Error: $e', 
+        icon: Icons.error, 
+        color: Colors.red
       );
     }
   }
@@ -115,15 +118,15 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            title: const Text('Istoric Scanări', style: TextStyle(fontFamily: ArtFonts.title, fontWeight: FontWeight.bold, fontSize: 26)),
+            title: const Text('Scan history', style: TextStyle(fontFamily: ArtFonts.title, fontWeight: FontWeight.bold, fontSize: 26)),
             backgroundColor: Colors.transparent,
             elevation: 0,
             foregroundColor: ArtColors.gold,
             bottom: TabBar(
               controller: _tabController,
               tabs: const [
-                Tab(text: 'Poze'),
-                Tab(text: 'Detalii'),
+                Tab(text: 'Pictures'),
+                Tab(text: 'Details'),
               ],
             ),
           ),
@@ -150,8 +153,15 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
           .where('userId', isEqualTo: currentUser?.uid) // Filter by current user ID
           .snapshots(),
       builder: (context, snapshot) {
+        print('DEBUG: History - snapshot data: ${snapshot.data?.docs.length} documente');
+        if (snapshot.hasData) {
+          snapshot.data!.docs.forEach((doc) {
+            print('DEBUG: History - document: ${doc.data()}');
+          });
+        }
+        
         if (snapshot.hasError) {
-          return Center(child: Text('A apărut o eroare: ${snapshot.error}', style: const TextStyle(color: ArtColors.gold)));
+          return Center(child: Text('An error occurred: ${snapshot.error}', style: const TextStyle(color: ArtColors.gold)));
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -161,7 +171,7 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
         // If there are no documents, display a message
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
-            child: Text('Nu există scanări în istoric.', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
+            child: Text('No scans in history.', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
           );
         }
 
@@ -174,14 +184,14 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
             final data = doc.data() as Map<String, dynamic>;
             final docId = doc.id; // Get document ID for deletion
 
-            final artworkName = data['artworkName'] ?? 'Necunoscut';
+            final artworkName = data['artworkName'] ?? 'Unknown';
             final confidence = (data['confidence'] as num?)?.toDouble() ?? 0.0;
             final timestamp = data['timestamp'] as Timestamp?;
             final imageUrl = data['imageUrl'] as String?;
             final favKey = timestamp != null ? (artworkName + '|' + timestamp.millisecondsSinceEpoch.toString()) : '';
 
             // Format the timestamp
-            String formattedTime = 'Data indisponibilă';
+            String formattedTime = 'Date unavailable';
             if (timestamp != null) {
               final dateTime = timestamp.toDate();
               formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}'; // You might need a date formatting package
@@ -201,25 +211,41 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
                 return await showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Confirmă ștergerea'),
-                    content: const Text('Ești sigur că vrei să ștergi această scanare?'),
+                    title: const Text('Confirm deletion'),
+                    content: const Text('Are you sure you want to delete this scan?'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Anulează'),
+                        child: const Text('Cancel'),
                       ),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Șterge', style: TextStyle(color: Colors.red)),
+                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
                       ),
                     ],
                   ),
                 );
               },
               onDismissed: (direction) async {
+                // Șterge scanarea din recognition_results
                 await FirebaseFirestore.instance.collection('recognition_results').doc(docId).delete();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Scanarea a fost ștearsă!')),
+                // Șterge favoritele asociate
+                if (currentUser != null && artworkName != null && timestamp != null) {
+                  final favs = await FirebaseFirestore.instance
+                      .collection('favorites')
+                      .where('userId', isEqualTo: currentUser.uid)
+                      .where('artworkName', isEqualTo: artworkName)
+                      .where('timestamp', isEqualTo: timestamp)
+                      .get();
+                  for (final doc in favs.docs) {
+                    await doc.reference.delete();
+                  }
+                }
+                ArtSnackBar.show(
+                  context, 
+                  'Scan and associated favorites deleted!', 
+                  icon: Icons.delete, 
+                  color: Colors.red
                 );
               },
               child: AnimatedBuilder(
@@ -257,20 +283,24 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
                             ),
                           )
                         : const Icon(Icons.image_not_supported, size: 60, color: Colors.grey), // Placeholder if no image URL with grey icon and increased size
-                    title: Text(
-                      artworkName,
-                      style: const TextStyle(
-                        color: ArtColors.gold,
-                        fontFamily: ArtFonts.title,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                    title: Flexible(
+                      child: Text(
+                        artworkName,
+                        style: const TextStyle(
+                          color: ArtColors.gold,
+                          fontFamily: ArtFonts.title,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Încredere: ${(confidence * 100).toStringAsFixed(1)}%',
+                          'Accuracy: ${(confidence * 100).toStringAsFixed(1)}%',
                           style: const TextStyle(
                             color: Colors.white,
                             fontFamily: ArtFonts.body,
@@ -278,7 +308,7 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
                           ),
                         ),
                         Text(
-                          'Data: $formattedTime',
+                          'Date: $formattedTime',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontFamily: ArtFonts.body,
@@ -297,9 +327,9 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
                             (() async {
                               await _toggleFavorite(artworkName, imageUrl, confidence, timestamp);
                               if (_favorites.contains(favKey)) {
-                                ArtSnackBar.show(context, 'Adăugat la favorite', icon: Icons.favorite, color: ArtColors.gold);
+                                ArtSnackBar.show(context, 'Added to favorites', icon: Icons.favorite, color: ArtColors.gold);
                               } else {
-                                ArtSnackBar.show(context, 'Eliminat din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
+                                ArtSnackBar.show(context, 'Removed from favorites', icon: Icons.favorite_border, color: Colors.redAccent);
                               }
                             })();
                           },
@@ -333,16 +363,16 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
   Widget _buildDetailsTab() {
     if (_selectedScan == null) {
       return const Center(
-        child: Text('Selectează o scanare din tab-ul Poze pentru detalii.',
+        child: Text('Select a scan from pictures to see the details.',
             style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
       );
     }
     final details = _selectedScan!['details'] as Map<String, dynamic>?;
-    final artworkName = _selectedScan!['artworkName'] ?? 'Necunoscut';
+    final artworkName = _selectedScan!['artworkName'] ?? 'Unknown';
     final confidence = (_selectedScan!['confidence'] as num?)?.toDouble() ?? 0.0;
     final timestamp = _selectedScan!['timestamp'] as Timestamp?;
     final imageUrl = _selectedScan!['imageUrl'] as String?;
-    String formattedTime = 'Data indisponibilă';
+    String formattedTime = 'Date unavailable';
     if (timestamp != null) {
       final dateTime = timestamp.toDate();
       formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}';
@@ -386,19 +416,71 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
           ),
           const SizedBox(height: 10),
           if (artist.isNotEmpty)
-            Text('Artist: $artist', style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18)),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Artist: ',
+                    style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title, fontSize: 18),
+                  ),
+                  TextSpan(
+                    text: artist,
+                    style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 18),
+                  ),
+                ],
+              ),
+            ),
           if (year.isNotEmpty)
-            Text('An: $year', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Year: ',
+                    style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title, fontSize: 16),
+                  ),
+                  TextSpan(
+                    text: year,
+                    style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
           if (style.isNotEmpty)
-            Text('Stil: $style', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Style: ',
+                    style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title, fontSize: 16),
+                  ),
+                  TextSpan(
+                    text: style,
+                    style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
           if (location.isNotEmpty)
-            Text('Locație: $location', style: const TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16)),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Location: ',
+                    style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title, fontSize: 16),
+                  ),
+                  TextSpan(
+                    text: location,
+                    style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 10),
-          Text('Încredere: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
-          Text('Scanat la: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+          Text('Accuracy: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+          Text('Scanned at: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
           const SizedBox(height: 18),
           if (description.isNotEmpty)
-            Text('Descriere:', style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title, fontSize: 20)),
+            Text('Description:', style: const TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title, fontSize: 20)),
           if (description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
@@ -454,13 +536,65 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
                   ),
                 const SizedBox(height: 10),
                 if (details['artist'] != null && details['artist'].toString().isNotEmpty)
-                  Text('Artist: ${details['artist']}', style: const TextStyle(color: ArtColors.gold)),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Artist: ',
+                          style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                        ),
+                        TextSpan(
+                          text: details['artist'],
+                          style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (details['year'] != null && details['year'].toString().isNotEmpty)
-                  Text('An: ${details['year']}', style: const TextStyle(color: Colors.white)),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Year: ',
+                          style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                        ),
+                        TextSpan(
+                          text: details['year'],
+                          style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (details['style'] != null && details['style'].toString().isNotEmpty)
-                  Text('Stil: ${details['style']}', style: const TextStyle(color: Colors.white)),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Style: ',
+                          style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                        ),
+                        TextSpan(
+                          text: details['style'],
+                          style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (details['location'] != null && details['location'].toString().isNotEmpty)
-                  Text('Locație: ${details['location']}', style: const TextStyle(color: Colors.white)),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Location: ',
+                          style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                        ),
+                        TextSpan(
+                          text: details['location'],
+                          style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 10),
                 if (details['description'] != null && details['description'].toString().isNotEmpty)
                   Padding(
@@ -472,7 +606,7 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
           ),
           actions: [
             TextButton(
-              child: const Text('Închide', style: TextStyle(color: ArtColors.gold)),
+              child: const Text('Close', style: TextStyle(color: ArtColors.gold)),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ],
@@ -482,19 +616,8 @@ class _HistoryPageState extends State<HistoryPage> with TickerProviderStateMixin
   }
 }
 
-// Simple Extension for Date Formatting (requires intl package for more advanced formatting)
-// For now, using basic toLocal().toString()
-// You might want to add the intl package and use DateFormat
-// extension on DateTime { 
-//   String toShortDateString() { 
-//     return this.toString().split(' ')[0]; // Basic date part
-//   }
-//   String toShortTimeString() {
-//      return this.toString().split(' ')[1].split('.')[0]; // Basic time part
-//   }
-// }
 
-// Temporary basic date formatting extension if intl is not added yet
+
 extension on DateTime {
   String toShortDateString() {
     return '${this.year}-${this.month.toString().padLeft(2, '0')}-${this.day.toString().padLeft(2, '0')}';

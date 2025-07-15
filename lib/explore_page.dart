@@ -200,7 +200,7 @@ class _ExplorePageState extends State<ExplorePage> with SingleTickerProviderStat
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Explorează', style: TextStyle(fontFamily: ArtFonts.title, fontWeight: FontWeight.bold, fontSize: 26)),
+          title: const Text('Explore', style: TextStyle(fontFamily: ArtFonts.title, fontWeight: FontWeight.bold, fontSize: 26)),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: ArtColors.gold,

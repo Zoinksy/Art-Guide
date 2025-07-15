@@ -6,6 +6,9 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:yuv_converter/yuv_converter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
+import '../art_ui.dart';
 
 // Funcție separată pentru procesarea imaginii
 Future<Map<String, double>> _processImageInBackground(Map<String, dynamic> params) async {
@@ -38,9 +41,12 @@ Future<Map<String, double>> _processImageInBackground(Map<String, dynamic> param
       numChannels: 4,
     );
 
+    // Rotim imaginea cu 90° spre dreapta
+    final rotatedImage = img.copyRotate(rgbImage, angle: 90);
+
     // Redimensionăm imaginea pentru model (224x224)
     final resizedImage = img.copyResize(
-      rgbImage,
+      rotatedImage,
       width: 224,
       height: 224,
       interpolation: img.Interpolation.linear,
@@ -121,9 +127,23 @@ class ArtRecognition {
   // Funcție pentru a salva imaginea RGB ca PNG pentru debugging
   Future<void> saveDebugImage(img.Image image, String filename) async {
     final pngBytes = img.encodePng(image);
-    final file = File('/sdcard/DCIM/Camera/$filename');
+    final directory = await getApplicationDocumentsDirectory();
+    final myDir = Directory('${directory.path}/art_images');
+    if (!await myDir.exists()) {
+      await myDir.create(recursive: true);
+    }
+    final file = File('${myDir.path}/$filename');
     await file.writeAsBytes(pngBytes);
-    print('DEBUG: Imagine salvată la: /sdcard/DCIM/Camera/$filename');
+    print('DEBUG: Imagine salvată la: \\${file.path}');
+  }
+
+  // Salvează mai multe variante pentru debug: raw, rotit, flip
+  Future<void> saveDebugVariants(img.Image image, String prefix) async {
+    await saveDebugImage(image, '${prefix}_raw.png');
+    await saveDebugImage(img.copyRotate(image, angle: 90), '${prefix}_rot90.png');
+    await saveDebugImage(img.copyRotate(image, angle: 270), '${prefix}_rot270.png');
+    await saveDebugImage(img.flipHorizontal(image), '${prefix}_flipH.png');
+    await saveDebugImage(img.flipVertical(image), '${prefix}_flipV.png');
   }
 
   Future<Map<String, double>> recognizeArtwork(CameraImage cameraImage) async {
@@ -136,18 +156,23 @@ class ArtRecognition {
     }
 
     try {
-      return await compute(_processImageInBackground, {
+      print('DEBUG: Starting camera image processing...');
+      
+      final results = await compute(_processImageInBackground, {
         'cameraImage': cameraImage,
         'interpreter': _interpreter!,
         'labels': _labels!,
       });
+
+      print('DEBUG: Camera image processing completed');
+      return results;
     } catch (e) {
       print('Error in recognizeArtwork: $e');
       return {};
     }
   }
 
-  // Metodă nouă pentru recunoașterea imaginilor din galerie
+  // Metodă optimizată pentru recunoașterea imaginilor din galerie
   Future<Map<String, dynamic>> recognizeImageFromGallery(File imageFile) async {
     if (_interpreter == null || _labels == null) {
       await loadModel();
@@ -156,6 +181,30 @@ class ArtRecognition {
         return {};
       }
     }
+
+    try {
+      print('DEBUG: Starting gallery image processing...');
+      
+      // Procesăm imaginea în background pentru performanță
+      final results = await compute(_processGalleryImageInBackground, {
+        'imageFile': imageFile,
+        'interpreter': _interpreter!,
+        'labels': _labels!,
+      });
+
+      print('DEBUG: Gallery image processing completed');
+      return results;
+    } catch (e) {
+      print('Error processing gallery image: $e');
+      return {};
+    }
+  }
+
+  // Funcție statică pentru procesarea imaginilor din galerie în background
+  static Future<Map<String, dynamic>> _processGalleryImageInBackground(Map<String, dynamic> params) async {
+    final File imageFile = params['imageFile'];
+    final Interpreter interpreter = params['interpreter'];
+    final List<String> labels = params['labels'];
 
     try {
       // Citim imaginea din fișier
@@ -191,25 +240,29 @@ class ArtRecognition {
       }
 
       // Run inference
-      final outputBuffer = List<List<double>>.filled(1, List<double>.filled(_labels!.length, 0.0));
-      _interpreter!.run(input, outputBuffer);
+      final outputBuffer = List<List<double>>.filled(1, List<double>.filled(labels.length, 0.0));
+      interpreter.run(input, outputBuffer);
 
       // Process results
       final Map<String, double> results = {};
       if (outputBuffer.isNotEmpty && outputBuffer[0].isNotEmpty) {
         final scores = outputBuffer[0];
-        for (int i = 0; i < _labels!.length; i++) {
-          results[_labels![i]] = scores[i];
+        for (int i = 0; i < labels.length; i++) {
+          results[labels[i]] = scores[i];
         }
       }
 
-      // Returnăm atât rezultatele cât și bytes-ii imaginii pentru salvare
+      // Rotim imaginea cu 270° pentru salvare în Firebase
+      final rotatedImage = img.copyRotate(image, angle: 270);
+      final rotatedBytes = img.encodeJpg(rotatedImage, quality: 90);
+
+      // Returnăm atât rezultatele cât și bytes-ii imaginii rotite pentru salvare
       return {
         'results': results,
-        'imageBytes': bytes,
+        'imageBytes': rotatedBytes,
       };
     } catch (e) {
-      print('Error processing gallery image: $e');
+      print('Error in background processing: $e');
       return {};
     }
   }
@@ -221,4 +274,34 @@ class ArtRecognition {
   // Getteri publici pentru acces din alte fișiere
   Interpreter? get interpreter => _interpreter;
   List<String>? get labels => _labels;
+
+  // Funcție pentru a obține lista de imagini salvate în folderul privat al aplicației
+  Future<List<File>> getSavedDebugImages() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final myDir = Directory('${directory.path}/art_images');
+    if (!await myDir.exists()) {
+      return [];
+    }
+    final files = myDir.listSync().whereType<File>().where((f) => f.path.endsWith('.png') || f.path.endsWith('.jpg')).toList();
+    return files;
+  }
+
+  // Funcție statică de test pentru salvare imagine roșie
+  static Future<void> testSaveRedImage() async {
+    final image = img.Image(width: 100, height: 100);
+    for (final pixel in image) {
+      pixel.r = 255;
+      pixel.g = 0;
+      pixel.b = 0;
+    }
+    final pngBytes = img.encodePng(image);
+    final directory = await getApplicationDocumentsDirectory();
+    final myDir = Directory('${directory.path}/art_images');
+    if (!await myDir.exists()) {
+      await myDir.create(recursive: true);
+    }
+    final file = File('${myDir.path}/test_red.png');
+    await file.writeAsBytes(pngBytes);
+    print('DEBUG: Imagine roșie de test salvată la: \\${file.path}');
+  }
 } 

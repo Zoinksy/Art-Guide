@@ -44,6 +44,8 @@ flutter:
     - assets/model/model.tflite
     - assets/model/labels.txt
     - assets/brush_strokes.png
+    - assets/model/loc/1.tflite
+    - assets/model/loc/labels.txt
 
   fonts:
     - family: Merriweather

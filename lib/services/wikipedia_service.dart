@@ -59,7 +59,7 @@ class WikipediaService {
     final details = <String, dynamic>{};
     
     // Try to find artist
-    final artistMatch = RegExp(r'(?:by|created by|painted by|artist:)\s+([^\.]+)', caseSensitive: false)
+    final artistMatch = RegExp(r'(?:by|created by|painted by|artist:)\s+([^\n\.;,]+)', caseSensitive: false)
         .firstMatch(extract);
     if (artistMatch != null) {
       details['artist'] = artistMatch.group(1)?.trim();

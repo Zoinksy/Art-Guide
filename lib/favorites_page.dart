@@ -57,7 +57,7 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return const Center(
                 child: Text(
-                  'Nu ai opere favorite încă.',
+                  'No picture added to favourites yet.',
                   style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.body, fontSize: 18),
                 ),
               );
@@ -69,12 +69,12 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                 final doc = snapshot.data!.docs[index];
                 final data = doc.data() as Map<String, dynamic>;
                 final docId = doc.id;
-                final artworkName = data['artworkName'] as String? ?? 'Necunoscut';
+                final artworkName = data['artworkName'] as String? ?? 'Unknown';
                 final imageUrl = data['imageUrl'] as String?;
                 final timestamp = data['timestamp'] as Timestamp?;
                 final confidence = (data['confidence'] as num?)?.toDouble() ?? 0.0;
                 final favKey = timestamp != null ? (artworkName + '|' + timestamp.millisecondsSinceEpoch.toString()) : '';
-                String formattedTime = 'Data indisponibilă';
+                String formattedTime = 'Date unavailable';
                 if (timestamp != null) {
                   final dateTime = timestamp.toDate();
                   formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}';
@@ -114,20 +114,24 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                               ),
                             )
                           : const Icon(Icons.image_not_supported, size: 60, color: Colors.grey),
-                      title: Text(
-                        artworkName,
-                        style: const TextStyle(
-                          color: ArtColors.gold,
-                          fontFamily: ArtFonts.title,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                      title: Flexible(
+                        child: Text(
+                          artworkName,
+                          style: const TextStyle(
+                            color: ArtColors.gold,
+                            fontFamily: ArtFonts.title,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Încredere: ${(confidence * 100).toStringAsFixed(1)}%',
+                            'Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
                             style: const TextStyle(
                               color: Colors.white,
                               fontFamily: ArtFonts.body,
@@ -135,7 +139,7 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                             ),
                           ),
                           Text(
-                            'Adăugat la: $formattedTime',
+                            'Added at: $formattedTime',
                             style: const TextStyle(
                               color: Colors.white70,
                               fontFamily: ArtFonts.body,
@@ -155,16 +159,16 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                                 builder: (context) => AlertDialog(
                                   backgroundColor: ArtColors.black,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                                  title: const Text('Confirmă ștergerea', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title)),
-                                  content: const Text('Ești sigur că vrei să ștergi această operă din favorite?', style: TextStyle(color: Colors.white)),
+                                  title: const Text('Confirm deletion', style: TextStyle(color: ArtColors.gold, fontFamily: ArtFonts.title)),
+                                  content: const Text('Are you sure you want to remove this artwork from favorites?', style: TextStyle(color: Colors.white)),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.of(context).pop(false),
-                                      child: const Text('Anulează', style: TextStyle(color: ArtColors.accent)),
+                                      child: const Text('Cancel', style: TextStyle(color: ArtColors.accent)),
                                     ),
                                     TextButton(
                                       onPressed: () => Navigator.of(context).pop(true),
-                                      child: const Text('Șterge', style: TextStyle(color: ArtColors.gold)),
+                                      child: const Text('Delete', style: TextStyle(color: ArtColors.gold)),
                                     ),
                                   ],
                                 ),
@@ -175,9 +179,9 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                                       .collection('favorites')
                                       .doc(docId)
                                       .delete();
-                                  ArtSnackBar.show(context, 'Operă eliminată din favorite', icon: Icons.favorite_border, color: Colors.redAccent);
+                                  ArtSnackBar.show(context, 'Artwork removed from favorites', icon: Icons.favorite_border, color: Colors.redAccent);
                                 } catch (e) {
-                                  ArtSnackBar.show(context, 'Eroare la ștergere: $e', icon: Icons.error, color: Colors.redAccent);
+                                  ArtSnackBar.show(context, 'Error deleting: $e', icon: Icons.error, color: Colors.redAccent);
                                 }
                               }
                             },
@@ -186,7 +190,6 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                             icon: const Icon(Icons.info_outline, color: ArtColors.gold),
                             tooltip: 'See details',
                             onPressed: () async {
-                              // Caută detaliile din recognition_results după artworkName și timestamp
                               Map<String, dynamic>? detailsData;
                               if (timestamp != null) {
                                 final results = await FirebaseFirestore.instance
@@ -236,11 +239,11 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
 
   void _showDetailsDialog(BuildContext context, Map<String, dynamic> favData, Map<String, dynamic>? scanData) {
     final details = scanData != null ? (scanData['details'] as Map<String, dynamic>? ?? {}) : {};
-    final artworkName = favData['artworkName'] ?? 'Necunoscut';
+    final artworkName = favData['artworkName'] ?? 'Unknown';
     final confidence = (favData['confidence'] as num?)?.toDouble() ?? 0.0;
     final timestamp = favData['timestamp'] as Timestamp?;
     final imageUrl = favData['imageUrl'] as String?;
-    String formattedTime = 'Data indisponibilă';
+    String formattedTime = 'Date unavailable';
     if (timestamp != null) {
       final dateTime = timestamp.toDate();
       formattedTime = '${dateTime.toLocal().toShortDateString()} ${dateTime.toLocal().toShortTimeString()}';
@@ -278,16 +281,68 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
                 ),
               const SizedBox(height: 10),
               if (artist.isNotEmpty)
-                Text('Artist: $artist', style: const TextStyle(color: ArtColors.gold)),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Artist: ',
+                        style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                      ),
+                      TextSpan(
+                        text: artist,
+                        style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                      ),
+                    ],
+                  ),
+                ),
               if (year.isNotEmpty)
-                Text('An: $year', style: const TextStyle(color: Colors.white)),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Year: ',
+                        style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                      ),
+                      TextSpan(
+                        text: year,
+                        style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                      ),
+                    ],
+                  ),
+                ),
               if (style.isNotEmpty)
-                Text('Stil: $style', style: const TextStyle(color: Colors.white)),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Style: ',
+                        style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                      ),
+                      TextSpan(
+                        text: style,
+                        style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                      ),
+                    ],
+                  ),
+                ),
               if (location.isNotEmpty)
-                Text('Locație: $location', style: const TextStyle(color: Colors.white)),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Location: ',
+                        style: TextStyle(color: ArtColors.gold, fontWeight: FontWeight.bold, fontFamily: ArtFonts.title),
+                      ),
+                      TextSpan(
+                        text: location,
+                        style: TextStyle(color: Colors.white, fontFamily: ArtFonts.body),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 10),
-              Text('Încredere: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
-              Text('Adăugat la: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+              Text('Confidence: ${(confidence * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
+              Text('Added at: $formattedTime', style: const TextStyle(color: Colors.white70, fontFamily: ArtFonts.body, fontSize: 14)),
               const SizedBox(height: 10),
               if (description.isNotEmpty)
                 Padding(
@@ -299,7 +354,7 @@ class _FavoritesPageState extends State<FavoritesPage> with SingleTickerProvider
         ),
         actions: [
           TextButton(
-            child: const Text('Închide', style: TextStyle(color: ArtColors.gold)),
+            child: const Text('Close', style: TextStyle(color: ArtColors.gold)),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],

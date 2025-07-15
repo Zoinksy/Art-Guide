@@ -9,13 +9,11 @@ class ArtColors {
   static const Color accent = Color(0xFFB2A4FF); // pastel mov
 }
 
-// Fonturi premium (asigură-te că ai fonturile în pubspec.yaml)
 class ArtFonts {
   static const String title = 'PlayfairDisplay';
   static const String body = 'Merriweather';
 }
 
-// SnackBar artistic cu iconiță și colțuri rotunjite
 class ArtSnackBar {
   static void show(BuildContext context, String message, {IconData? icon, Color? color}) {
     final snackBar = SnackBar(
@@ -51,7 +49,7 @@ class ArtSnackBar {
   }
 }
 
-// Card cu efect de glassmorphism
+
 class ArtGlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? margin;
@@ -94,7 +92,6 @@ class ArtGlassCard extends StatelessWidget {
   }
 }
 
-// Inimioară animată pentru favorite
 class AnimatedFavoriteIcon extends StatefulWidget {
   final bool isFavorite;
   final VoidCallback onTap;
@@ -149,7 +146,7 @@ class _AnimatedFavoriteIconState extends State<AnimatedFavoriteIcon> with Single
   }
 }
 
-// Background artistic cu gradient și overlay opțional
+
 class ArtBackground extends StatelessWidget {
   final Widget child;
   final bool withOverlay;

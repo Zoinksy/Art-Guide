@@ -15,6 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/artwork_service.dart';
 import 'package:path_provider/path_provider.dart';
 
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -76,66 +77,70 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
 
       if (bestMatch != null && bestConfidence != null) {
+        // Obține detalii Wikipedia
+        final wikiDetails = await _artworkService.getWikipediaDetails(bestMatch!);
+        print('DEBUG: Upload - bestMatch: $bestMatch, confidence: $bestConfidence');
+        
         // Salvăm rezultatul în Firebase
-        await _saveRecognitionResult(bestMatch!, bestConfidence!, imageBytes);
+        await _saveRecognitionResult(bestMatch!, bestConfidence!, imageBytes, wikiDetails: wikiDetails);
+        
+        print('DEBUG: Upload - salvare completă');
+        
         // Poți afișa un mesaj de succes sau să folosești direct datele salvate
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Opera a fost recunoscută și salvată!',
-                style: TextStyle(fontFamily: ArtFonts.body),
-              ),
-              backgroundColor: ArtColors.gold,
-            ),
+          ArtSnackBar.show(
+            context, 
+            'Artwork recognized and saved!', 
+            icon: Icons.check_circle, 
+            color: ArtColors.gold
           );
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Nu s-a putut recunoaște opera',
-                style: TextStyle(fontFamily: ArtFonts.body),
-              ),
-              backgroundColor: Colors.red,
-            ),
+          ArtSnackBar.show(
+            context, 
+            'Could not recognize artwork', 
+            icon: Icons.error, 
+            color: Colors.red
           );
         }
       }
     } catch (e) {
       print('Error testing model: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Eroare: $e',
-              style: const TextStyle(fontFamily: ArtFonts.body),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        ArtSnackBar.show(
+          context, 
+          'Error: $e', 
+          icon: Icons.error, 
+          color: Colors.red
         );
       }
     }
   }
 
   // Adăugăm funcția de salvare în Firebase
-  Future<void> _saveRecognitionResult(String artworkName, double confidence, Uint8List? imageBytes) async {
+  Future<void> _saveRecognitionResult(String artworkName, double confidence, Uint8List? imageBytes, {Map<String, dynamic>? wikiDetails}) async {
     try {
+      print('DEBUG: Începe salvare - artworkName: $artworkName, imageBytes: ${imageBytes != null ? "valid" : "null"}');
+      
       File? imageFile;
       if (imageBytes != null) {
         final tempDir = await getTemporaryDirectory();
         imageFile = await File('${tempDir.path}/$artworkName.jpg').writeAsBytes(imageBytes);
+        print('DEBUG: Fișier creat: ${imageFile.path}');
       }
+      
       if (imageFile != null) {
+        print('DEBUG: Apelează saveArtworkDetails');
         await _artworkService.saveArtworkDetails(
           artworkName: artworkName,
           confidence: confidence,
           imageFile: imageFile,
-          modelDetails: null,
+          modelDetails: wikiDetails,
         );
-        print('Recognition result with Wikipedia details saved to Firestore: $artworkName ($confidence)');
+        print('DEBUG: saveArtworkDetails complet');
       } else {
+        print('DEBUG: Fallback - salvare fără imagine');
         // fallback dacă nu ai imagine, poți salva doar datele minime
         await FirebaseFirestore.instance.collection('recognition_results').add({
           'artworkName': artworkName,
@@ -147,7 +152,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         print('Recognition result (fără imagine) salvat.');
       }
     } catch (e) {
-      print('Error saving recognition result: $e');
+      print('ERROR: Error saving recognition result: $e');
     }
   }
 
@@ -164,7 +169,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               const Icon(Icons.museum, color: ArtColors.gold, size: 36),
               const SizedBox(width: 12),
               const Text(
-                'AR Tour Guide',
+                'Art Tour',
                 style: TextStyle(
                   color: ArtColors.gold,
                   fontFamily: ArtFonts.title,
@@ -181,7 +186,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
                 if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/');
+                  // Pop all routes and go back to the root (WelcomePage)
+                  Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
                 }
               },
             ),
@@ -194,7 +200,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Bun venit, ${user?.displayName ?? 'Explorator'}!',
+                  'Welcome, ${user?.displayName ?? 'Explorer'}!',
                   style: const TextStyle(
                     color: ArtColors.gold,
                     fontSize: 24,
@@ -202,9 +208,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 Text(
-                  'Descoperă arta într-un mod nou, interactiv și elegant.',
+                  'Discover art in a new, interactive and interesting way!',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.85),
                     fontSize: 16,
@@ -212,6 +218,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   ),
                 ),
                 const SizedBox(height: 28),
+                Expanded(
+                  child: Column(
+                    children: [
                 Expanded(
                   child: GridView.count(
                     crossAxisCount: 2,
@@ -222,8 +231,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         ArtGlassCard(
                           child: _buildFeatureCard(
                             icon: Icons.camera_alt,
-                            title: 'Scanare AR',
-                            description: 'Scanează opere de artă pentru informații',
+                            title: 'Scan',
+                            description: 'Scan a picture to discover art',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -235,8 +244,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         ArtGlassCard(
                           child: _buildFeatureCard(
                             icon: Icons.explore,
-                            title: 'Explorează',
-                            description: 'Descoperă opere de artă din jurul tău',
+                            title: 'Explore',
+                            description: 'Discover the art all around you!',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -248,8 +257,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         ArtGlassCard(
                           child: _buildFeatureCard(
                             icon: Icons.history,
-                            title: 'Istoric',
-                            description: 'Vezi operele scanate anterior',
+                            title: 'History',
+                            description: 'See the pieces of art scanned previously',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -262,7 +271,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           child: _buildFeatureCard(
                             icon: Icons.favorite,
                             title: 'Favorite',
-                            description: 'Operele tale favorite',
+                            description: 'Favorite pieces of art',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -290,10 +299,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     }),
                   ),
                 ),
-                const SizedBox(height: 10),
-                Center(
-                  child: Column(
-                    children: [
+                      const SizedBox(height: 16),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: ArtColors.gold,
@@ -303,49 +309,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           elevation: 6,
                         ),
                         icon: const Icon(Icons.image, size: 22),
-                        label: const Text('Testează modelul cu o imagine din galerie', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
+                        label: const Text('Upload from gallery', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
                         onPressed: _testModelWithImage,
-                      ),
-                      const SizedBox(height: 10),
-                      // Buton temporar pentru popularea bazei de date
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          elevation: 6,
-                        ),
-                        icon: const Icon(Icons.storage, size: 22),
-                        label: const Text('Populează baza de date cu detaliile operelor', style: TextStyle(fontFamily: ArtFonts.body, fontWeight: FontWeight.bold)),
-                        onPressed: () async {
-                          try {
-                            await _artworkService.populateArtworkDetails();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Baza de date a fost populată cu succes!',
-                                    style: TextStyle(fontFamily: ArtFonts.body),
-                                  ),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Eroare: $e',
-                                    style: const TextStyle(fontFamily: ArtFonts.body),
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          }
-                        },
                       ),
                     ],
                   ),
@@ -368,31 +333,36 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsets.all(8.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: ArtColors.gold, size: 48),
-            const SizedBox(height: 12),
+            Icon(icon, color: ArtColors.gold, size: 40),
+            const SizedBox(height: 8),
             Text(
               title,
               style: const TextStyle(
                 color: ArtColors.gold,
-                fontSize: 18,
+                fontSize: 16,
                 fontFamily: ArtFonts.title,
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
-            Text(
+            const SizedBox(height: 6),
+            Expanded(
+              child: Text(
               description,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.85),
-                fontSize: 14,
+                  fontSize: 12,
                 fontFamily: ArtFonts.body,
               ),
               textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as path;
+import 'package:image/image.dart' as img;
 import 'wikipedia_service.dart';
 
 class ArtworkDetails {
@@ -49,27 +50,66 @@ class ArtworkService {
     required Map<String, dynamic>? modelDetails,
   }) async {
     try {
+      print('DEBUG: saveArtworkDetails - începe upload imagine');
+      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Upload image to Firebase Storage
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = '${user.uid}_$timestamp${path.extension(imageFile.path)}';
-      final storageRef = _storage.ref().child('artwork_images/$fileName');
-      
-      await storageRef.putFile(imageFile);
-      final imageUrl = await storageRef.getDownloadURL();
+      String imageUrl = ''; // Declare imageUrl variable
+
+      // Rotate image 90 degrees before upload
+      print('DEBUG: Rotating image 90 degrees');
+      final imageBytes = await imageFile.readAsBytes();
+      final image = img.decodeImage(imageBytes);
+      if (image != null) {
+        final rotatedImage = img.copyRotate(image, angle: 90);
+        final rotatedBytes = img.encodeJpg(rotatedImage, quality: 90);
+        
+        // Create temporary file with rotated image
+        final tempDir = await Directory.systemTemp.createTemp('rotated_image');
+        final rotatedFile = File('${tempDir.path}/rotated_${path.basename(imageFile.path)}');
+        await rotatedFile.writeAsBytes(rotatedBytes);
+        
+        // Upload rotated image to Firebase Storage
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = '${user.uid}_$timestamp${path.extension(imageFile.path)}';
+        final storageRef = _storage.ref().child('artwork_images/$fileName');
+        
+        print('DEBUG: Upload la Firebase Storage: $fileName');
+        await storageRef.putFile(rotatedFile);
+        imageUrl = await storageRef.getDownloadURL();
+        print('DEBUG: Imagine rotată uploadată, URL: $imageUrl');
+        
+        // Clean up temporary file
+        await rotatedFile.delete();
+        await tempDir.delete();
+      } else {
+        // Fallback to original image if rotation fails
+        print('DEBUG: Rotation failed, using original image');
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = '${user.uid}_$timestamp${path.extension(imageFile.path)}';
+        final storageRef = _storage.ref().child('artwork_images/$fileName');
+        
+        print('DEBUG: Upload la Firebase Storage: $fileName');
+        await storageRef.putFile(imageFile);
+        imageUrl = await storageRef.getDownloadURL();
+        print('DEBUG: Imagine uploadată, URL: $imageUrl');
+      }
 
       // Get Wikipedia details
+      print('DEBUG: Începe fetch Wikipedia');
       final wikiDetails = await _wikipediaService.getArtworkDetails(artworkName);
+      print('DEBUG: Wikipedia details: $wikiDetails');
 
       // Combine model details with Wikipedia details
       final details = {
         ...?modelDetails,
         ...wikiDetails,
       };
+      print('DEBUG: Detalii combinate: $details');
 
       // Save to Firestore
+      print('DEBUG: Salvare în Firestore');
       await _firestore.collection('recognition_results').add({
         'userId': user.uid,
         'artworkName': artworkName,
@@ -78,8 +118,9 @@ class ArtworkService {
         'timestamp': FieldValue.serverTimestamp(),
         'details': details,
       });
+      print('DEBUG: Salvare Firestore completă pentru: $artworkName');
     } catch (e) {
-      print('Error saving artwork details: $e');
+      print('ERROR: Error saving artwork details: $e');
       rethrow;
     }
   }
@@ -293,5 +334,10 @@ class ArtworkService {
     for (final entry in artworks.entries) {
       await _firestore.collection('artwork_details').doc(entry.key).set(entry.value);
     }
+  }
+
+  // Metodă publică pentru a obține detalii Wikipedia
+  Future<Map<String, dynamic>> getWikipediaDetails(String artworkName) {
+    return _wikipediaService.getArtworkDetails(artworkName);
   }
 } 
